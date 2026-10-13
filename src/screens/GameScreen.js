@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -50,13 +50,20 @@ export default function GameScreen() {
   const [error, setError] = useState('');
   const [answered, setAnswered] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
+
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
-  const [hintUsed, setHintUsed] = useState(false);
+  const [hintLevel, setHintLevel] = useState(0);
+
+  const [correctAnswers, setCorrectAnswers] = useState(0);
+  const [attempts, setAttempts] = useState(0);
+
+  const mountedRef = useRef(false);
+  const roundRequestRef = useRef(0);
 
   useEffect(() => {
-    let active = true;
+    mountedRef.current = true;
 
     async function initialiseGame() {
       try {
@@ -65,7 +72,7 @@ export default function GameScreen() {
           AsyncStorage.getItem(BEST_STREAK_KEY),
         ]);
 
-        if (!active) return;
+        if (!mountedRef.current) return;
 
         setPokemonList(list);
 
@@ -74,9 +81,9 @@ export default function GameScreen() {
           Number.isFinite(parsedBest) ? parsedBest : 0
         );
 
-        await startRound(list, null, active);
+        await startRound(list, null);
       } catch {
-        if (active) {
+        if (mountedRef.current) {
           setError(
             'Could not load the game. Check your internet connection and retry.'
           );
@@ -88,34 +95,39 @@ export default function GameScreen() {
     initialiseGame();
 
     return () => {
-      active = false;
+      mountedRef.current = false;
+      roundRequestRef.current += 1;
     };
   }, []);
 
-  async function startRound(list = pokemonList, previousId = pokemon?.id, active = true) {
-    if (!list.length) {
+  async function startRound(list = pokemonList, previousId = pokemon?.id) {
+    if (!list || list.length === 0) {
       setError('Pokémon data is not available yet.');
+      setLoading(false);
       return;
     }
+
+    const requestId = ++roundRequestRef.current;
 
     setLoading(true);
     setError('');
     setAnswered(false);
     setSelectedId(null);
-    setHintUsed(false);
+    setHintLevel(0);
     setPokemon(null);
     setChoices([]);
 
     try {
-      let available = list.filter((item) => item.id !== previousId);
+      let available = list.filter(
+        (item) => item.id !== previousId
+      );
 
       if (available.length < 4) {
         available = list;
       }
 
-      const answer = available[
-        Math.floor(Math.random() * available.length)
-      ];
+      const answer =
+        available[Math.floor(Math.random() * available.length)];
 
       const wrongChoices = shuffle(
         list.filter((item) => item.id !== answer.id)
@@ -123,24 +135,40 @@ export default function GameScreen() {
 
       const detail = await getPokemonDetails(answer.id);
 
-      if (!active) return;
+      if (
+        !mountedRef.current ||
+        requestId !== roundRequestRef.current
+      ) {
+        return;
+      }
+
+      const artwork =
+        detail.sprites?.other?.['official-artwork']?.front_default ||
+        detail.sprites?.front_default ||
+        answer.image;
 
       setPokemon({
         ...answer,
         types: detail.types.map((item) => item.type.name),
-        artwork:
-          detail.sprites?.other?.['official-artwork']?.front_default ||
-          detail.sprites?.front_default ||
-          answer.image,
+        height: detail.height,
+        artwork,
       });
 
       setChoices(shuffle([answer, ...wrongChoices]));
     } catch {
-      if (active) {
-        setError('Could not load the next Pokémon. Please try again.');
+      if (
+        mountedRef.current &&
+        requestId === roundRequestRef.current
+      ) {
+        setError(
+          'Could not load the next Pokémon. Please try again.'
+        );
       }
     } finally {
-      if (active) {
+      if (
+        mountedRef.current &&
+        requestId === roundRequestRef.current
+      ) {
         setLoading(false);
       }
     }
@@ -151,9 +179,14 @@ export default function GameScreen() {
 
     setSelectedId(choice.id);
     setAnswered(true);
+    setAttempts((current) => current + 1);
 
     if (choice.id === pokemon.id) {
-      setScore((current) => current + 1);
+      const pointsEarned =
+        hintLevel === 0 ? 10 : hintLevel === 1 ? 5 : 2;
+
+      setScore((current) => current + pointsEarned);
+      setCorrectAnswers((current) => current + 1);
 
       const nextStreak = streak + 1;
       setStreak(nextStreak);
@@ -175,19 +208,48 @@ export default function GameScreen() {
     }
   }
 
+  function handleHint() {
+    if (answered || hintLevel >= 2) return;
+    setHintLevel((current) => current + 1);
+  }
+
   function handleNext() {
-    startRound(pokemonList, pokemon?.id, true);
+    startRound(pokemonList, pokemon?.id);
   }
 
   function retryGame() {
-    setScore(0);
-    setStreak(0);
-    startRound(pokemonList, pokemon?.id, true);
+    if (pokemonList.length > 0) {
+      startRound(pokemonList, pokemon?.id);
+      return;
+    }
+
+    Alert.alert(
+      'Game unavailable',
+      'Please check your internet connection and restart the app to reload the game.'
+    );
   }
 
-  const hintText = pokemon?.types?.length
-    ? `Type: ${pokemon.types.map(capitalize).join(' / ')}`
-    : 'Type information is not available.';
+  const hintText =
+    hintLevel === 1
+      ? `Type: ${
+          pokemon?.types?.map(capitalize).join(' / ') ||
+          'Unknown'
+        }`
+      : hintLevel === 2
+        ? `Type: ${
+            pokemon?.types?.map(capitalize).join(' / ') ||
+            'Unknown'
+          }\nHeight: ${
+            typeof pokemon?.height === 'number'
+              ? `${(pokemon.height / 10).toFixed(1)} m`
+              : 'Unknown'
+          }`
+        : '';
+
+  const accuracy =
+    attempts > 0
+      ? Math.round((correctAnswers / attempts) * 100)
+      : 0;
 
   return (
     <ScrollView
@@ -196,7 +258,9 @@ export default function GameScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>TRAINER CHALLENGE / 003</Text>
+        <Text style={styles.eyebrow}>
+          TRAINER CHALLENGE / 003
+        </Text>
 
         <Text style={styles.title}>
           Who's that
@@ -205,18 +269,19 @@ export default function GameScreen() {
         </Text>
 
         <Text style={styles.subtitle}>
-          Recognise the silhouette and test your knowledge.
+          Recognise the silhouette, collect research points, and
+          keep your streak alive.
         </Text>
       </View>
 
       <View style={styles.scoreRow}>
         <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>SCORE</Text>
+          <Text style={styles.scoreLabel}>POINTS</Text>
           <Text style={styles.scoreValue}>{score}</Text>
         </View>
 
         <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>CURRENT STREAK</Text>
+          <Text style={styles.scoreLabel}>STREAK</Text>
           <Text style={styles.scoreValue}>{streak}</Text>
         </View>
 
@@ -226,39 +291,68 @@ export default function GameScreen() {
         </View>
       </View>
 
+      <View style={styles.progressPanel}>
+        <View style={styles.progressHeading}>
+          <Text style={styles.progressTitle}>
+            RESEARCH PROGRESS
+          </Text>
+          <Text style={styles.progressPercent}>
+            {accuracy}% accuracy
+          </Text>
+        </View>
+
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${accuracy}%` },
+            ]}
+          />
+        </View>
+
+        <View style={styles.progressStats}>
+          <Text style={styles.progressStat}>
+            Correct: {correctAnswers}
+          </Text>
+          <Text style={styles.progressStat}>
+            Attempts: {attempts}
+          </Text>
+        </View>
+      </View>
+
       {loading ? (
         <View style={styles.loadingPanel}>
-          <ActivityIndicator size="large" color={COLORS.coral} />
+          <ActivityIndicator
+            size="large"
+            color={COLORS.coral}
+          />
           <Text style={styles.loadingText}>
             Finding a mystery Pokémon...
           </Text>
         </View>
       ) : error ? (
         <View style={styles.errorPanel}>
-          <Text style={styles.errorTitle}>Game unavailable</Text>
+          <Text style={styles.errorTitle}>
+            Game unavailable
+          </Text>
           <Text style={styles.errorText}>{error}</Text>
 
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => {
-              if (pokemonList.length) {
-                startRound(pokemonList, pokemon?.id, true);
-              } else {
-                Alert.alert(
-                  'Please reload',
-                  'Restart the app to load Pokémon data again.'
-                );
-              }
-            }}
+            onPress={retryGame}
           >
-            <Text style={styles.primaryButtonText}>Try Again</Text>
+            <Text style={styles.primaryButtonText}>
+              Try Again
+            </Text>
           </TouchableOpacity>
         </View>
       ) : pokemon ? (
         <>
           <View style={styles.mysteryPanel}>
             <View style={styles.mysteryHeader}>
-              <Text style={styles.mysteryLabel}>MYSTERY CREATURE</Text>
+              <Text style={styles.mysteryLabel}>
+                MYSTERY CREATURE
+              </Text>
               <Text style={styles.questionMark}>?</Text>
             </View>
 
@@ -280,29 +374,53 @@ export default function GameScreen() {
             </Text>
 
             {answered && (
-              <Text
+              <View
                 style={[
-                  styles.feedback,
+                  styles.feedbackBox,
                   selectedId === pokemon.id
-                    ? styles.correctFeedback
-                    : styles.wrongFeedback,
+                    ? styles.correctFeedbackBox
+                    : styles.wrongFeedbackBox,
                 ]}
               >
-                {selectedId === pokemon.id
-                  ? 'Correct! Great recognition!'
-                  : `Not quite! It was ${capitalize(pokemon.name)}.`}
-              </Text>
+                <Text
+                  style={[
+                    styles.feedback,
+                    selectedId === pokemon.id
+                      ? styles.correctFeedback
+                      : styles.wrongFeedback,
+                  ]}
+                >
+                  {selectedId === pokemon.id
+                    ? `Correct! You earned ${
+                        hintLevel === 0
+                          ? 10
+                          : hintLevel === 1
+                            ? 5
+                            : 2
+                      } points.`
+                    : `Not quite! It was ${capitalize(
+                        pokemon.name
+                      )}.`}
+                </Text>
+              </View>
             )}
 
-            {hintUsed && !answered && (
+            {hintLevel > 0 && !answered && (
               <View style={styles.hintBox}>
-                <Text style={styles.hintText}>{hintText}</Text>
+                <Text style={styles.hintLabel}>
+                  RESEARCH CLUE {hintLevel} OF 2
+                </Text>
+                <Text style={styles.hintText}>
+                  {hintText}
+                </Text>
               </View>
             )}
           </View>
 
           <View style={styles.answerSection}>
-            <Text style={styles.sectionTitle}>CHOOSE YOUR ANSWER</Text>
+            <Text style={styles.sectionTitle}>
+              CHOOSE YOUR ANSWER
+            </Text>
 
             {choices.map((choice, index) => {
               const isCorrect = choice.id === pokemon.id;
@@ -315,7 +433,11 @@ export default function GameScreen() {
                   styles.choiceButton,
                   styles.correctChoice,
                 ];
-              } else if (answered && isSelected && !isCorrect) {
+              } else if (
+                answered &&
+                isSelected &&
+                !isCorrect
+              ) {
                 choiceStyle = [
                   styles.choiceButton,
                   styles.wrongChoice,
@@ -339,11 +461,15 @@ export default function GameScreen() {
                   </Text>
 
                   {answered && isCorrect && (
-                    <Text style={styles.choiceIndicator}>✓</Text>
+                    <Text style={styles.choiceIndicator}>
+                      ✓
+                    </Text>
                   )}
 
                   {answered && isSelected && !isCorrect && (
-                    <Text style={styles.choiceIndicator}>✕</Text>
+                    <Text style={styles.choiceIndicator}>
+                      ✕
+                    </Text>
                   )}
                 </TouchableOpacity>
               );
@@ -352,12 +478,19 @@ export default function GameScreen() {
 
           {!answered ? (
             <TouchableOpacity
-              style={styles.hintButton}
-              onPress={() => setHintUsed(true)}
-              disabled={hintUsed}
+              style={[
+                styles.hintButton,
+                hintLevel >= 2 && styles.disabledButton,
+              ]}
+              onPress={handleHint}
+              disabled={hintLevel >= 2}
             >
               <Text style={styles.hintButtonText}>
-                {hintUsed ? 'Hint revealed' : '✦  Reveal a Hint'}
+                {hintLevel === 0
+                  ? '✦  Reveal Type Hint (+5 points if correct)'
+                  : hintLevel === 1
+                    ? '✦  Reveal Height Hint (+2 points if correct)'
+                    : 'All hints revealed'}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -370,6 +503,19 @@ export default function GameScreen() {
               </Text>
             </TouchableOpacity>
           )}
+
+          <View style={styles.scoringNote}>
+            <Text style={styles.scoringNoteTitle}>
+              HOW TO SCORE
+            </Text>
+            <Text style={styles.scoringNoteText}>
+              No hints: 10 points
+              {'  ·  '}
+              One hint: 5 points
+              {'  ·  '}
+              Two hints: 2 points
+            </Text>
+          </View>
         </>
       ) : null}
 
@@ -418,7 +564,7 @@ const styles = StyleSheet.create({
   scoreRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 18,
+    marginBottom: 12,
   },
   scoreCard: {
     flex: 1,
@@ -440,6 +586,50 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '900',
     marginTop: 7,
+  },
+  progressPanel: {
+    backgroundColor: COLORS.panel,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 18,
+  },
+  progressHeading: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  progressTitle: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  progressPercent: {
+    color: COLORS.green,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  progressTrack: {
+    height: 7,
+    backgroundColor: COLORS.track,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginTop: 12,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: COLORS.coral,
+    borderRadius: 10,
+  },
+  progressStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 9,
+  },
+  progressStat: {
+    color: COLORS.muted,
+    fontSize: 11,
   },
   loadingPanel: {
     backgroundColor: COLORS.panel,
@@ -516,11 +706,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 16,
   },
+  feedbackBox: {
+    alignSelf: 'stretch',
+    borderRadius: 10,
+    padding: 11,
+    marginTop: 12,
+  },
+  correctFeedbackBox: {
+    backgroundColor: '#18352F',
+  },
+  wrongFeedbackBox: {
+    backgroundColor: '#3A252D',
+  },
   feedback: {
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'center',
-    marginTop: 9,
   },
   correctFeedback: {
     color: COLORS.green,
@@ -535,10 +736,19 @@ const styles = StyleSheet.create({
     padding: 12,
     marginTop: 14,
   },
+  hintLabel: {
+    color: COLORS.coral,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
   hintText: {
     color: COLORS.green,
     textAlign: 'center',
     fontSize: 12,
+    lineHeight: 19,
     fontWeight: '700',
   },
   answerSection: {
@@ -591,15 +801,20 @@ const styles = StyleSheet.create({
   hintButton: {
     alignItems: 'center',
     paddingVertical: 16,
+    paddingHorizontal: 10,
     marginTop: 7,
     borderWidth: 1,
     borderColor: '#465166',
     borderRadius: 13,
   },
+  disabledButton: {
+    opacity: 0.55,
+  },
   hintButtonText: {
     color: COLORS.coral,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
+    textAlign: 'center',
   },
   primaryButton: {
     backgroundColor: COLORS.coral,
@@ -612,6 +827,24 @@ const styles = StyleSheet.create({
     color: COLORS.background,
     fontSize: 14,
     fontWeight: '900',
+  },
+  scoringNote: {
+    backgroundColor: '#182233',
+    borderRadius: 12,
+    padding: 13,
+    marginTop: 16,
+  },
+  scoringNoteTitle: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  scoringNoteText: {
+    color: COLORS.muted,
+    fontSize: 11,
+    lineHeight: 18,
+    marginTop: 6,
   },
   footer: {
     color: '#697589',
