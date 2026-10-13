@@ -37,7 +37,7 @@ function MainTabs() {
         },
         headerShadowVisible: false,
 
-        tabBarIcon: ({ focused, color, size }) => {
+        tabBarIcon: ({ focused, color }) => {
           let iconName;
 
           if (route.name === 'Pokédex') {
@@ -85,7 +85,7 @@ function MainTabs() {
         name="Pokédex"
         component={PokedexScreen}
         options={{
-          title: 'Pokédex',
+          title: "Damcha's Pokedex",
           tabBarLabel: 'Pokédex',
         }}
       />
@@ -94,7 +94,7 @@ function MainTabs() {
         name="My Team"
         component={TeamScreen}
         options={{
-          title: 'My Team',
+          title: "Damcha's Team",
           tabBarLabel: 'My Team',
         }}
       />
@@ -103,7 +103,7 @@ function MainTabs() {
         name="Game"
         component={GameScreen}
         options={{
-          title: 'Guess the Pokémon',
+          title: "Damcha's Pokémon Game",
           tabBarLabel: 'Game',
         }}
       />
@@ -142,7 +142,7 @@ export default function App() {
             name="Detail"
             component={DetailScreen}
             options={{
-              title: 'Pokémon Details',
+              title: "Damcha's Pokémon Details",
             }}
           />
         </Stack.Navigator>
