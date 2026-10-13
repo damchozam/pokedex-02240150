@@ -1,5 +1,6 @@
 
 import React from 'react';
+
 import {
   ActivityIndicator,
   FlatList,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 
 import { useTeam } from '../context/TeamContext';
+import TeamSynergyAnalyzer from '../components/TeamSynergyAnalyzer';
 
 const COLORS = {
   background: '#111827',
@@ -74,7 +76,9 @@ export default function TeamScreen({ navigation }) {
   }
 
   function openPokemon(pokemon) {
-    navigation.getParent()?.navigate('Detail', { id: pokemon.id });
+    navigation.getParent()?.navigate('Detail', {
+      id: pokemon.id,
+    });
   }
 
   function renderPokemon({ item, index }) {
@@ -84,7 +88,10 @@ export default function TeamScreen({ navigation }) {
       <View style={styles.pokemonCard}>
         <TouchableOpacity
           activeOpacity={0.85}
-          style={[styles.cardArtwork, { backgroundColor: cardColor }]}
+          style={[
+            styles.cardArtwork,
+            { backgroundColor: cardColor },
+          ]}
           onPress={() => openPokemon(item)}
         >
           <Text style={styles.cardNumber}>
@@ -100,7 +107,10 @@ export default function TeamScreen({ navigation }) {
 
         <View style={styles.cardInfo}>
           <View style={styles.nameContainer}>
-            <Text style={styles.pokemonName} numberOfLines={1}>
+            <Text
+              style={styles.pokemonName}
+              numberOfLines={1}
+            >
               {capitalize(item.name)}
             </Text>
 
@@ -124,7 +134,10 @@ export default function TeamScreen({ navigation }) {
   if (!ready) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.coral} />
+        <ActivityIndicator
+          size="large"
+          color={COLORS.coral}
+        />
         <Text style={styles.emptyDescription}>
           Loading your saved team...
         </Text>
@@ -143,7 +156,9 @@ export default function TeamScreen({ navigation }) {
       ListHeaderComponent={
         <View>
           <View style={styles.hero}>
-            <Text style={styles.eyebrow}>TRAINER PROFILE / 002</Text>
+            <Text style={styles.eyebrow}>
+              TRAINER PROFILE / 002
+            </Text>
 
             <Text style={styles.title}>
               My Pokémon
@@ -157,23 +172,30 @@ export default function TeamScreen({ navigation }) {
 
             <View style={styles.teamSummary}>
               <View>
-                <Text style={styles.summaryLabel}>TEAM ROSTER</Text>
+                <Text style={styles.summaryLabel}>
+                  TEAM ROSTER
+                </Text>
+
                 <Text style={styles.summaryValue}>
                   {team.length}
-                  <Text style={styles.summaryTotal}> / {maxTeamSize}</Text>
+                  <Text style={styles.summaryTotal}>
+                    {' '}/ {maxTeamSize}
+                  </Text>
                 </Text>
               </View>
 
               <View style={styles.slotContainer}>
-                {Array.from({ length: maxTeamSize }).map((_, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.slot,
-                      index < team.length && styles.filledSlot,
-                    ]}
-                  />
-                ))}
+                {Array.from({ length: maxTeamSize }).map(
+                  (_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.slot,
+                        index < team.length && styles.filledSlot,
+                      ]}
+                    />
+                  )
+                )}
               </View>
             </View>
           </View>
@@ -181,11 +203,14 @@ export default function TeamScreen({ navigation }) {
           {team.length > 0 && (
             <View style={styles.sectionHeading}>
               <View>
-                <Text style={styles.sectionTitle}>YOUR LINEUP</Text>
+                <Text style={styles.sectionTitle}>
+                  YOUR LINEUP
+                </Text>
                 <Text style={styles.sectionSubtitle}>
                   Tap artwork to view details
                 </Text>
               </View>
+
               <Text style={styles.count}>
                 {team.length} SELECTED
               </Text>
@@ -195,10 +220,15 @@ export default function TeamScreen({ navigation }) {
           {team.length === 0 && (
             <View style={styles.emptyState}>
               <Text style={styles.emptySymbol}>＋</Text>
-              <Text style={styles.emptyTitle}>Your journey starts here</Text>
+
+              <Text style={styles.emptyTitle}>
+                Your journey starts here
+              </Text>
+
               <Text style={styles.emptyDescription}>
-                Your team is empty. Visit the Pokédex, open a Pokémon,
-                and tap "Add to My Team" to recruit your first companion.
+                Your team is empty. Visit the Pokédex, open a
+                Pokémon, and tap "Add to My Team" to recruit
+                your first companion.
               </Text>
 
               <TouchableOpacity
@@ -213,44 +243,58 @@ export default function TeamScreen({ navigation }) {
           )}
 
           {team.length > 0 && (
-            <View style={styles.statsPanel}>
-              <Text style={styles.statsTitle}>Combined Base Stats</Text>
-              <Text style={styles.statsSubtitle}>
-                Total base stats across your {team.length}{' '}
-                {team.length === 1 ? 'Pokémon' : 'Pokémon'}
-              </Text>
+            <>
+              <View style={styles.statsPanel}>
+                <Text style={styles.statsTitle}>
+                  Combined Base Stats
+                </Text>
 
-              {STAT_NAMES.map((statName) => {
-                const value = combinedStats[statName];
-                const maximum = team.length * 255;
-                const percentage = maximum
-                  ? Math.min((value / maximum) * 100, 100)
-                  : 0;
+                <Text style={styles.statsSubtitle}>
+                  Total base stats across your {team.length}{' '}
+                  Pokémon
+                </Text>
 
-                return (
-                  <View key={statName} style={styles.statRow}>
-                    <Text style={styles.statLabel}>
-                      {STAT_LABELS[statName]}
-                    </Text>
+                {STAT_NAMES.map((statName) => {
+                  const value = combinedStats[statName];
+                  const maximum = team.length * 255;
+                  const percentage = maximum
+                    ? Math.min((value / maximum) * 100, 100)
+                    : 0;
 
-                    <Text style={styles.statValue}>{value}</Text>
+                  return (
+                    <View
+                      key={statName}
+                      style={styles.statRow}
+                    >
+                      <Text style={styles.statLabel}>
+                        {STAT_LABELS[statName]}
+                      </Text>
 
-                    <View style={styles.statTrack}>
-                      <View
-                        style={[
-                          styles.statFill,
-                          { width: `${percentage}%` },
-                        ]}
-                      />
+                      <Text style={styles.statValue}>
+                        {value}
+                      </Text>
+
+                      <View style={styles.statTrack}>
+                        <View
+                          style={[
+                            styles.statFill,
+                            { width: `${percentage}%` },
+                          ]}
+                        />
+                      </View>
                     </View>
-                  </View>
-                );
-              })}
-            </View>
+                  );
+                })}
+              </View>
+
+              <TeamSynergyAnalyzer team={team} />
+            </>
           )}
         </View>
       }
-      ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+      ItemSeparatorComponent={() => (
+        <View style={{ height: 12 }} />
+      )}
       ListFooterComponent={
         team.length > 0 ? (
           <TouchableOpacity
